@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/todo_db
+    username: postgres
+    password: admin
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+  cassandra:
+    contact-points:
+      - 127.0.0.1
+    port: 9042
+    local-datacenter: datacenter1
+    keyspace-name: market_data
+    schema-action: none
+server:
+  port: 8081
+  logging:
+    level:
+      org.springframework.web: DEBUG
+      org.apache.http: DEBUG
