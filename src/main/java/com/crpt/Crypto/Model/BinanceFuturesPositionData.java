@@ -12,23 +12,23 @@ import lombok.Setter;
 @NoArgsConstructor
 public class BinanceFuturesPositionData {
 
-    String symbol;
-    String positionAmt;
-    String entryPrice;
-    String breakEvenPrice;
-    String markPrice;
-    String unRealizedProfit;
-    String liquidationPrice;
-    String leverage;
-    String maxNotionalValue;
-    String marginType;
-    String isolatedMargin;
-    Boolean isAutoAddMargin;
-    String positionSide;
-    String notional;
-    String isolatedWallet;
-    long updateTime;
-    Boolean isolated;
-    int adlQuantile;
+    private String symbol;
+    private String positionAmt;
+    private String entryPrice;
+    private String breakEvenPrice;
+    private String markPrice;
+    private String unRealizedProfit;
+    private String liquidationPrice;
+    private String leverage;
+    private String maxNotionalValue;
+    private String marginType;
+    private String isolatedMargin;
+    private Boolean isAutoAddMargin;
+    private String positionSide;
+    private String notional;
+    private String isolatedWallet;
+    private long updateTime;
+    private Boolean isolated;
+    private int adlQuantile;
 }
 

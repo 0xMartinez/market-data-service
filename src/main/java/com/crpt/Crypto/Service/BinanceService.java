@@ -3,6 +3,10 @@ package com.crpt.Crypto.Service;
 
 import com.crpt.Crypto.Client.BinanceClient;
 import com.crpt.Crypto.Client.BinanceWebSocketClient;
+import com.crpt.Crypto.Configuration.CredentialsConfig;
+import com.crpt.Crypto.Model.CreateIndicatorRequest;
+import com.crpt.Crypto.Model.IndicatorType;
+import com.crpt.Crypto.Model.Source;
 import com.crpt.Crypto.Repository.Model.CandlestickDb;
 import com.crpt.Crypto.Repository.Model.CandlestickKey;
 import com.crpt.Crypto.Model.HLC3Indicator;
@@ -34,22 +38,19 @@ public class BinanceService {
     final private BinanceWebSocketClient binanceWebSocketClient;
     final private CandlestickService candlestickService;
 
+    public void connect(final CreateIndicatorRequest request, final String symbol, final String interval, final Integer limit) {
 
-    public void connect(final String symbol, final String interval, final Integer limit) {
-
-        getKlines(symbol, interval, limit);
+        getKlines(request, symbol, interval, limit);
         binanceWebSocketClient.connect(String.format("%s@kline_%s", symbol, interval));
     }
 
-    public BarSeries getKlines(final String symbol, final String interval, final Integer limit) {
+    public void getKlines(final CreateIndicatorRequest request, final String symbol, final String interval, final Integer limit) {
 
         candlestickRepository.deleteAll();
         candlestickService.deleteCacheCandlesticks();
+        final BarSeries series = new BaseBarSeriesBuilder().withName("barSeries").build();
 
-        System.out.println("all deleted");
         final List<List<Object>> response = binanceClient.getKlines(symbol, interval, limit);
-        BarSeries series = new BaseBarSeriesBuilder().withName("historicSeries").build();
-        int index = 0;
         for (List<Object> kline : response) {
 
             final BigDecimal openPrice = BigDecimal.valueOf(Double.parseDouble(kline.get(1).toString()));
@@ -57,12 +58,14 @@ public class BinanceService {
             final BigDecimal highestPrice = BigDecimal.valueOf(Double.parseDouble(kline.get(2).toString()));
             final BigDecimal lowestPrice = BigDecimal.valueOf(Double.parseDouble(kline.get(3).toString()));
             final BigDecimal volume = BigDecimal.valueOf(Double.parseDouble((kline.get(5).toString())));
-            final Date time = new Date(Long.parseLong(kline.get(6).toString()));
+            final Date openTime = new Date(Long.parseLong(kline.get(0).toString()));
+            final Date closeTime = new Date(Long.parseLong(kline.get(6).toString()));
 
-            if (time.before(Date.from(Instant.now()))) {
+            long differenceMillis = closeTime.getTime() - openTime.getTime();
+            if (closeTime.before(Date.from(Instant.now()))) {
                 final BaseBar bar = BaseBar.builder(DecimalNum::valueOf, Number.class)
-                        .timePeriod(Duration.ofMinutes(30))
-                        .endTime(time.toInstant().atZone(ZoneId.of("Europe/Warsaw")))
+                        .timePeriod(Duration.ofMillis(differenceMillis))
+                        .endTime(closeTime.toInstant().atZone(ZoneId.of("Europe/Warsaw")))
                         .openPrice(openPrice)
                         .highPrice(highestPrice)
                         .lowPrice(lowestPrice)
@@ -71,40 +74,41 @@ public class BinanceService {
                         .build();
 
                 series.addBar(bar);
-                HLC3Indicator hlc3Indicator = new HLC3Indicator(series);
-
-                final ZLEMAIndicator zlemaIndicator8 = calculateZlemaIndicator(hlc3Indicator, 8);
-                final ZLEMAIndicator zlemaIndicator21 = calculateZlemaIndicator(hlc3Indicator, 21);
-                final Rule entryRule = createEntryRule(zlemaIndicator8, zlemaIndicator21);
-                final Rule exitRule = createExitRule(zlemaIndicator8, zlemaIndicator21);
-
-                Boolean signal = null;
-                if (entryRule.isSatisfied(index)) {
-                    signal = true;
-                } else if (exitRule.isSatisfied(index)) {
-                    signal = false;
-                }
 
                 CandlestickDb candlestick = new CandlestickDb();
                 CandlestickKey candlestickKey = new CandlestickKey();
                 candlestickKey.setSymbol(symbol);
-                candlestickKey.setCloseTime(time.toInstant());
+                candlestickKey.setCloseTime(closeTime.toInstant());
                 candlestick.setKey(candlestickKey);
-                candlestick.setOpenPrice(bar.getOpenPrice().bigDecimalValue());
-                candlestick.setClosePrice(bar.getClosePrice().bigDecimalValue());
-                candlestick.setHighestPrice(bar.getHighPrice().bigDecimalValue());
-                candlestick.setLowestPrice(bar.getLowPrice().bigDecimalValue());
-                candlestick.setVolume(bar.getVolume().bigDecimalValue());
-                candlestick.setHlc3indicator8(zlemaIndicator8.getValue(series.getEndIndex()).bigDecimalValue().setScale(1, RoundingMode.DOWN));
-                candlestick.setHlc3indicator21(zlemaIndicator21.getValue(series.getEndIndex()).bigDecimalValue().setScale(1, RoundingMode.DOWN));
-                candlestick.setSignal(signal);
+                candlestick.setOpenTime(openTime.toInstant());
+                candlestick.setOpenPrice(openPrice);
+                candlestick.setClosePrice(closePrice);
+                candlestick.setHighestPrice(highestPrice);
+                candlestick.setLowestPrice(lowestPrice);
+                candlestick.setVolume(volume);
+                createAndSetIndicator(request, candlestick, series);
 
-                index++;
                 candlestickRepository.save(candlestick);
                 candlestickService.saveCandlestick(candlestick);
             }
         }
-        return series;
+    }
+
+    private void createAndSetIndicator(final CreateIndicatorRequest request, final CandlestickDb candlestick, final BarSeries series) {
+
+        Indicator<Num> indicator = null;
+        if (Source.HLC3 == request.getSource()) {
+            indicator = new HLC3Indicator(series);
+        }
+
+        if (indicator != null && IndicatorType.ZLEMAIndicator == request.getIndicatorType()) {
+            final ZLEMAIndicator zlemaIndicatorFast = new ZLEMAIndicator(indicator, request.getPeriodFast());
+            final ZLEMAIndicator zlemaIndicatorMedium = new ZLEMAIndicator(indicator, request.getPeriodMedium());
+            final ZLEMAIndicator zlemaIndicatorSlow = new ZLEMAIndicator(indicator, request.getPeriodSlow());
+
+            candlestick.setHlc3indicator8(zlemaIndicatorFast.getValue(series.getEndIndex()).bigDecimalValue().setScale(1, RoundingMode.DOWN));
+            candlestick.setHlc3indicator21(zlemaIndicatorMedium.getValue(series.getEndIndex()).bigDecimalValue().setScale(1, RoundingMode.DOWN));
+        }
     }
 
     private Rule createEntryRule(final AbstractIndicator<Num> indicator1, final AbstractIndicator<Num> indicator2) {

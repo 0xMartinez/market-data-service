@@ -6,6 +6,7 @@ import com.crpt.Crypto.Repository.Model.CandlestickDb;
 import com.crpt.Crypto.Repository.Model.CandlestickKey;
 import com.crpt.Crypto.Repository.Model.OpenOrderRepository;
 import com.crpt.Crypto.Service.CandlestickService;
+import com.crpt.Crypto.utill.BinanceUtil;
 import jakarta.websocket.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +21,7 @@ import java.math.RoundingMode;
 import java.net.URI;
 import java.time.Duration;
 import java.time.ZoneId;
+import java.util.Optional;
 
 @Component
 @ClientEndpoint
@@ -63,11 +65,11 @@ public class BinanceWebSocketClient {
         final String symbol = mappedKline.getSymbol();
         final boolean isKlineClosed = mappedKline.getIsKlineClosed();
         final BarSeries barSeries = new BaseBarSeriesBuilder().withName("barSeries").build();
+        long differenceMillis = mappedKline.getKlineCloseTime().getTime() - mappedKline.getKlineStartTime().getTime();
 
-        candlestickService.getCacheCandlesticks();
         candlestickService.getAllCandlesticks().forEach(candlestickDb -> {
             barSeries.addBar(BaseBar.builder(DecimalNum::valueOf, Number.class)
-                    .timePeriod(Duration.ofMinutes(1))
+                    .timePeriod(Duration.ofMillis(differenceMillis))
                     .endTime(candlestickDb.getKey().getCloseTime().atZone(ZoneId.of("Europe/Warsaw")))
                     .openPrice(candlestickDb.getOpenPrice())
                     .highPrice(candlestickDb.getHighestPrice())
@@ -77,15 +79,13 @@ public class BinanceWebSocketClient {
                     .build());
         });
 
-
         BaseBar barTmp = null;
         final Bar currentBar = barSeries.getBar(barSeries.getEndIndex());
         if (currentBar.getEndTime().equals(mappedKline.getKlineCloseTime().toInstant().atZone(ZoneId.of("Europe/Warsaw")))) {
-
             currentBar.addPrice(DecimalNum.valueOf(mappedKline.getClosePrice()));
         } else {
             barTmp = BaseBar.builder(DecimalNum::valueOf, Number.class)
-                    .timePeriod(Duration.ofMinutes(15))
+                    .timePeriod(Duration.ofMillis(differenceMillis))
                     .endTime(mappedKline.getKlineCloseTime().toInstant().atZone(ZoneId.of("Europe/Warsaw")))
                     .openPrice(mappedKline.getOpenPrice().doubleValue())
                     .highPrice(mappedKline.getHighPrice().doubleValue())
@@ -100,7 +100,6 @@ public class BinanceWebSocketClient {
         final ZLEMAIndicator zlemaIndicator8 = new ZLEMAIndicator(hlc3Indicator, 8);
         final ZLEMAIndicator zlemaIndicator21 = new ZLEMAIndicator(hlc3Indicator, 21);
 
-
         final Rule entryRule = new CrossedUpIndicatorRule(zlemaIndicator8, zlemaIndicator21);
         final Rule exitRule = new CrossedDownIndicatorRule(zlemaIndicator8, zlemaIndicator21);
 
@@ -111,14 +110,13 @@ public class BinanceWebSocketClient {
         } else if (exitRule.isSatisfied(barSeries.getEndIndex())) {
             signal = false;
         }
-        final CandlestickDb candlestickDb = new CandlestickDb();
 
-        CandlestickKey candlestickKey = new CandlestickKey();
+        final CandlestickDb candlestickDb = new CandlestickDb();
+        final CandlestickKey candlestickKey = new CandlestickKey();
         candlestickKey.setSymbol(symbol);
         candlestickKey.setCloseTime(mappedKline.getKlineCloseTime().toInstant());
-
         candlestickDb.setKey(candlestickKey);
-
+        candlestickDb.setOpenTime(mappedKline.getKlineStartTime().toInstant());
         candlestickDb.setOpenPrice(barTmp != null ? barTmp.getOpenPrice().bigDecimalValue() : currentBar.getOpenPrice().bigDecimalValue());
         candlestickDb.setClosePrice(barTmp != null ? barTmp.getClosePrice().bigDecimalValue() : currentBar.getClosePrice().bigDecimalValue());
         candlestickDb.setHighestPrice(barTmp != null ? barTmp.getHighPrice().bigDecimalValue() : currentBar.getHighPrice().bigDecimalValue());
@@ -128,10 +126,13 @@ public class BinanceWebSocketClient {
         candlestickDb.setHlc3indicator21(zlemaIndicator21.getValue(barSeries.getEndIndex()).bigDecimalValue().setScale(1, RoundingMode.DOWN));
         candlestickDb.setSignal(signal);
 
+        final Optional<CandlestickDb> existingCandlestickDb = candlestickRepository.findByKeySymbolAndKeyCloseTime(candlestickDb.getKey().getSymbol(), candlestickDb.getKey().getCloseTime());
+        existingCandlestickDb.ifPresent(candlestickRepository::delete);
         candlestickRepository.save(candlestickDb);
-        if (isKlineClosed) {
-            candlestickService.saveCandlestick(candlestickDb);
 
+        if (isKlineClosed) {
+            candlestickRepository.save(candlestickDb);
+            candlestickService.saveCandlestick(candlestickDb);
         }
 
         if (signal != null && !signal

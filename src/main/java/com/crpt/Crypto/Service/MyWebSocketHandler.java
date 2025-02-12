@@ -9,17 +9,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MyWebSocketHandler extends TextWebSocketHandler {
 
-    // Lista aktywnych sesji WebSocket
     private final CopyOnWriteArrayList<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+    public void afterConnectionEstablished(WebSocketSession session) {
         sessions.add(session);
         System.out.println("Nowe połączenie: " + session.getId());
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         sessions.remove(session);
         System.out.println("Połączenie zamknięte: " + session.getId());
     }

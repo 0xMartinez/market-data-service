@@ -1,9 +1,7 @@
 package com.crpt.Crypto.Model;
 
-import lombok.Setter;
 import lombok.Value;
 
-@Setter
 @Value
 public class GetKlinesRequest {
 

@@ -1,8 +1,11 @@
-package com.crpt.Crypto.Model;
+package com.crpt.Crypto.utill;
 
 
 import com.binance.connector.futures.client.impl.UMFuturesClientImpl;
 import com.crpt.Crypto.Client.BinanceClient;
+import com.crpt.Crypto.Model.BinanceCandlestickStreamResponse;
+import com.crpt.Crypto.Model.BinanceFuturesPositionData;
+import com.crpt.Crypto.Model.CreateOrderRequest;
 import com.crpt.Crypto.Repository.Model.OpenOrder;
 import com.crpt.Crypto.Repository.Model.OpenOrderKey;
 import com.crpt.Crypto.Repository.Model.OpenOrderRepository;
@@ -39,6 +42,7 @@ public class BinanceUtil {
         return BinanceCandlestickStreamResponse.builder()
                 .kline(BinanceCandlestickStreamResponse.Kline.builder()
                         .symbol(klineData.get("s").asText())
+                        .klineStartTime(new Date(Long.parseLong(klineData.get("t").asText())))
                         .klineCloseTime(new Date(Long.parseLong(klineData.get("T").asText())))
                         .openPrice(BigDecimal.valueOf(klineData.get("o").asDouble()))
                         .highPrice(BigDecimal.valueOf(klineData.get("h").asDouble()))
@@ -68,7 +72,7 @@ public class BinanceUtil {
         final String response = client.account().newOrder(parameters);
 
         final BinanceFuturesPositionData positionData = getPositionInfo(request.getSymbol()).stream()
-                .filter(position -> request.getPositionSide().equals(position.positionSide)).findFirst().orElse(null);
+                .filter(position -> request.getPositionSide().equals(position.getPositionSide())).findFirst().orElse(null);
 
         if (positionData != null) {
             openOrderRepository.save(OpenOrder.builder()

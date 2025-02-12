@@ -32,10 +32,8 @@ public class CandlestickService {
         objectMapper.registerModule(new JavaTimeModule());
 
         if (cachedObjects != null && !cachedObjects.isEmpty()) {
-            List<CandlestickDb> candlestickList = objectMapper.readValue(objectMapper.writeValueAsString(cachedObjects), new TypeReference<List<CandlestickDb>>() {});
-            return candlestickList;
+            return objectMapper.readValue(objectMapper.writeValueAsString(cachedObjects), new TypeReference<List<CandlestickDb>>() {});
         }
-
 
         List<CandlestickDb> candlesticks = candlestickRepository.findAll();
         if (!candlesticks.isEmpty()) {
@@ -48,20 +46,15 @@ public class CandlestickService {
 
     public void saveCandlestick(CandlestickDb candlestick) {
 
+        log.info("candlestick saved to cache");
         redisTemplate.opsForList().rightPushAll(CACHE_KEY, candlestick);
         redisTemplate.expire(CACHE_KEY, 1, TimeUnit.DAYS);
     }
 
     public void deleteCacheCandlesticks() {
 
+        log.info("cache deleted");
         redisTemplate.delete(CACHE_KEY);
-        List<Object> cachedObjects = redisTemplate.opsForList().range(CACHE_KEY, 0, -1);
-
-        log.info("{}", cachedObjects);
-    }
-
-    public void getCacheCandlesticks() {
-
         List<Object> cachedObjects = redisTemplate.opsForList().range(CACHE_KEY, 0, -1);
 
         log.info("{}", cachedObjects);
